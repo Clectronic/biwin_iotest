@@ -1,0 +1,24 @@
+
+{
+    "configurations": [
+        {
+            "name": "C/C++: gcc build active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bw_iotest.c",
+            "args": ["-t","6"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "为 gdb 启用整齐打印",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
