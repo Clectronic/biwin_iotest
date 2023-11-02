@@ -1,5 +1,20 @@
 {
     "files.associations": {
-        "constants.h": "c"
-    }
+        "constants.h": "c",
+        "bw_iotest.h": "c",
+        "tool.h": "c",
+        "lib.h": "c",
+        "string.h": "c",
+        "stdio.h": "c",
+        "stdint.h": "c",
+        "stdint-gcc.h": "c",
+        "crc32.h": "c",
+        "mman.h": "c",
+        "thread_info.h": "c",
+        "unistd.h": "c",
+        "types.h": "c",
+        "getopt.h": "c",
+        "times.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }

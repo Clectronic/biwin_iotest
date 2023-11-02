@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -lpthread
 
 # 使用通配符获取所有的.c文件
 SOURCES = $(wildcard *.c)
@@ -11,7 +11,7 @@ OBJECTS = $(SOURCES:.c=.o)
 all: iotest
 
 iotest: $(OBJECTS)
-	$(CC) $(CFLAGS) -o iotest $(OBJECTS)
+	$(CC) -o iotest $(OBJECTS) $(CFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

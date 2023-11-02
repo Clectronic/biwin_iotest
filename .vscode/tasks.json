@@ -8,6 +8,7 @@
                 "-fdiagnostics-color=always",
                 "-g",
                 "${file}",
+                "${fileDirname}/tool.c",
                 "-lpthread",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}"

@@ -5,7 +5,7 @@
             "name": "C/C++: gcc build active file",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bw_iotest.c",
+            "program": "${workspaceFolder}/iotest",
             "args": ["-t","6"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
