@@ -1,23 +1,9 @@
-#include <time.h>
 #include <pthread.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include "time_info.h"
 #ifndef THREAD_INFO
 #define THREAD_INFO
-typedef struct{
-    struct timeval real_time_start;
-    struct timeval user_time_start;
-    struct timeval sys_time_start;
-
-    struct timeval real_time_stop;
-    struct timeval user_time_stop;
-    struct timeval sys_time_stop;
-} time_info;
-
-typedef struct {
-	double avg, max;
-	unsigned long count, count1, count2;
-} Latencies;
 
 typedef struct{
     int thread_num;
@@ -25,9 +11,9 @@ typedef struct{
     pthread_attr_t thread_attr;
     char file_name[1024];
     off_t file_offset;
-    uint32_t file_size;
+    uint64_t file_size;
     uint64_t ramdom_ops_count;
-    uint32_t block_size;
+    uint64_t block_size;
     unsigned char *buffer;
     unsigned buffer_crc;
     

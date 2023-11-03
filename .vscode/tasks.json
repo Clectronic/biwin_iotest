@@ -9,9 +9,11 @@
                 "-g",
                 "${file}",
                 "${fileDirname}/tool.c",
-                "-lpthread",
+                "${fileDirname}/generic_io.c",
+                "${fileDirname}/time_info.c",
                 "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
+                "${fileDirname}/${fileBasenameNoExtension}",
+                "-lpthread"
             ],
             "options": {
                 "cwd": "${fileDirname}"

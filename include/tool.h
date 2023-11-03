@@ -4,6 +4,7 @@
 #include "lib.h"
 #include "thread_info.h"
 #include "generic_io.h"
+#include "time_info.h"
 #include <stdint.h>
 #include <getopt.h>
 #include <sys/types.h>
@@ -39,7 +40,7 @@ typedef struct {
 
 void debug_log(int show, char * mesg);
 int parse_args(int argc, char* argv[], Arguments *args);
-int init_DEFAULT_opt(Arguments *opt_args);
+int init_default_opt(Arguments *opt_args);
 static char *my_int_to_string(int a);
 static void print_option(const char* s, 
 						 const char* desc, 
@@ -47,6 +48,7 @@ static void print_option(const char* s,
 static void print_help_and_exit();
 
 static void* bw_aligned_alloc(const size_t size);
+void init_test_thread_set(thread_info *thread_set, Arguments * args);
 static inline unsigned long crc32(const void* const buffer,
 		                  unsigned long     length,
 		                  unsigned long     crc);
@@ -109,7 +111,7 @@ static const unsigned long crctab[256] = {
 #define RANDOM_WRITE_TEST 2
 #define RANDOM_READ_TEST  3
 int start_tests(thread_info *thread_set,Arguments args);
-int start_test(thread_info* threads, int test_case, int seq);
+int start_test(thread_info* threads, int test_case, int seq, time_info *t);
 typedef void(*func_test)(thread_ins *);
 typedef struct{
   volatile int *child_status;

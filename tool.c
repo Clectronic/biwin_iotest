@@ -115,9 +115,11 @@ int parse_args(int argc, char* argv[], Arguments *args){
             case 't':
                 args->thread_nums = atoi(optarg);
                 check_arg(args->thread_nums, "thread_num > 0\n");
+                break;
             case 'b':
                 args->block_size = atoi(optarg);
                 check_arg(args->block_size, "file_size should > 0\n");
+                break;
             case 'f':
                 args->file_size_MB = atoi(optarg);
                 check_arg(args->file_size_MB, "block_size should > 0\n");
@@ -151,6 +153,7 @@ int parse_args(int argc, char* argv[], Arguments *args){
                  print_help_and_exit();
                  break;
             case '?':
+                break;
             default:
                 fprintf(stderr, "Try ./bw_iotest -h for more information!\r\n");
                 exit(-1);
@@ -165,7 +168,7 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
     //初始化测试线程池
     memset(thread_set, 0, sizeof(thread_info));
     thread_set->thread_nums = args->thread_nums;
-    thread_set->threads = calloc(thread_set->thread_nums, sizeof(thread_ins));
+    thread_set->threads = (thread_ins*)calloc(thread_set->thread_nums, sizeof(thread_ins));
     /*init test thread data*/
     if(args->rawDevice_mode){
         offs = (off_t)args->file_size_MB * MBYTE;
@@ -178,7 +181,8 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
         thread_set->threads[i].thread_num = i;
         thread_set->threads[i].block_size = args->block_size;
         thread_set->threads[i].ramdom_ops_count = args->random_ops_counts;
-        thread_set->threads[i].file_size = args->file_size_MB;
+        thread_set->threads[i].file_size = args->file_size_MB / thread_set->thread_nums;
+        printf("---blocks = %ld \r\n ",thread_set->threads[i].file_size);
         if(args->rawDevice_mode){
             //设置每个线程对同一个原始块设备不同的偏移量
             thread_set->threads[i].file_offset = offs;
@@ -193,7 +197,7 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
         pthread_attr_init(&(thread_set->threads[i].thread_attr));
         pthread_attr_setscope(&(thread_set->threads[i].thread_attr),PTHREAD_SCOPE_SYSTEM);
         //初始化块buffer
-        thread_set->threads[i].buffer = bw_aligned_alloc(thread_set->threads[i].block_size);
+        thread_set->threads[i].buffer = (unsigned char*)bw_aligned_alloc(thread_set->threads[i].block_size);
         //如果使能了校验功能
         if(args->check_data){
             int j;
@@ -211,32 +215,73 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
     }
     //printf("off = %dB r_offs = %dMB\r\n",offs, r_offs/1024/1024);
 }
-int start_task(thread_ins *t, uint32_t io_ops){
+
+int start_task(thread_ins *t,
+               uint64_t io_ops,
+               file_offset_function offset_func,
+               file_io_function io_func) {
     int fd;
-    uint32_t blocks = (uint32_t)( t->file_size*MBYTE )/(t->block_size);
+    int ret;
+    uint64_t blocks = (uint64_t)(t->file_size * MBYTE) / (t->block_size);
     uint64_t ori_ops = io_ops;
     int open_flags;
-    //读写操作
+
+    // 读写操作
     open_flags = O_RDWR;
-    //如果不是原始块设备需要创建文件
-    if(!opt_args.rawDevice_mode){
+
+    // 如果不是原始块设备需要创建文件
+    if (!opt_args.rawDevice_mode) {
         open_flags |= O_CREAT;
     }
-    //同步磁盘和内存中的数据
-    if(opt_args.sync_writing){
-       open_flags |= O_SYNC; 
+
+    // 同步磁盘和内存中的数据
+    if (opt_args.sync_writing) {
+        open_flags |= O_SYNC;
     }
-    //如果需要直接写入
-    if(opt_args.direct_io){
+
+    // 如果需要直接写入
+    if (opt_args.direct_io) {
         open_flags |= __O_DIRECT;
     }
-    fd = open(t->file_name,open_flags,0600);//0600代表文件拥有者有读写权限
-    printf("blocks = %d \r\n",blocks);
+    fd = open(t->file_name, open_flags, 0600); // 0600代表文件拥有者有读写权限
+    if (fd == -1) {
+        fprintf(stderr, "%s : %s\n", strerror(errno), t->file_name);
+        return -1;
+    }
+    if (opt_args.mmap_mode) {
+        // 使用内存映射读写
+    } else {
+        // 普通文件读写
+        off_t cur_offt = t->file_offset - t->block_size;
+        printf("io_ops = %ld\r\n",io_ops);
+        while (io_ops) {
+            struct timeval time_start, time_stop;
+            gettimeofday(&time_start, NULL);
+            cur_offt = (*offset_func)(cur_offt, t);
+            //printf("cur_ooft = %d \r\n",cur_offt);
+            ret = (*io_func)(fd, cur_offt, t);
+            gettimeofday(&time_stop, NULL);
+
+            if (ret == -1) {
+                perror("Error: during IO \r\n");
+                exit(-1);
+            } else {
+            }
+            io_ops--;
+        }
+    }
+
+clean:
+    fsync(fd);
+    close(fd);
+    printf("blocks = %ld \r\n", blocks);
+    return 0;
 }
+
 static void start_write_test(thread_ins * thread){
     debug_log(true,"seq write start !\r\n");
     //args: thread, get_blocks_func,
-    start_task(thread, get_seq_blocks(thread));
+    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pwrite_operate);
 }
 static void start_read_test(thread_ins * thread){
 }
@@ -253,8 +298,12 @@ static func_test test_cases[] = {
 
 int start_tests(thread_info *thread_set,Arguments args){
     int ret;
+    time_info *timer_write = &(thread_set->total_write_time);
+    time_info *timer_read = &(thread_set->total_read_time);
+    time_info *timer_ramdom_write = &(thread_set->total_random_write_time);
+    time_info *timer_random_read = &(thread_set->total_random_read_time);
     if(args.run_test[WRITE_TEST]){
-        ret = start_test(thread_set, WRITE_TEST, args.sequential_write_mode);
+        ret = start_test(thread_set, WRITE_TEST, args.sequential_write_mode, timer_write);
         if(ret){
             exit(-1);
         }
@@ -277,7 +326,7 @@ static void *start_func(void * tdata){
     td->fnc(td->t_instant);
 }
 
-int start_test(thread_info* thread_set, int test_case, int seq){
+int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
     int i;
     volatile int *child_status;
     threads_data * td;
@@ -343,7 +392,10 @@ int start_test(thread_info* thread_set, int test_case, int seq){
     //start = 1 代表全部线程开始执行测试任务
     start = 1;
     //等待所有线程执行完毕
+    timer_start(t);
     wait_threads_end(thread_set);
+    timer_stop(t);
+    calculate_running_time(t);
 clean:
     free((int*)child_status);
     free(td);

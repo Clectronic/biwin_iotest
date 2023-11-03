@@ -1,4 +1,5 @@
 #include "include/tool.h"
+#include "include/generic_io.h"
 Arguments opt_args;
 static thread_info threads;
 int main(int argc, char * argv[]){
