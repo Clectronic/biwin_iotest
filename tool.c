@@ -1,15 +1,4 @@
 #include "include/tool.h"
-static inline unsigned long crc32(const void* const buffer,
-		                  unsigned long     length,
-		                  unsigned long     crc)
-{
-      const unsigned char* cp = (const unsigned char*)buffer;
-
-      while (length--)
-        crc = (crc << 8) ^ crctab[((crc >> 24) ^ *(cp++)) & 0xFF];
-
-      return crc;
-}
 
 static void* bw_aligned_alloc(const size_t size) {
     void *memory = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -282,6 +271,8 @@ static void start_write_test(thread_ins * thread){
     debug_log(true,"seq write start !\r\n");
     //args: thread, get_blocks_func,
     start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pwrite_operate);
+    printf("开始读\r\n");
+    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pread_operate);
 }
 static void start_read_test(thread_ins * thread){
 }
@@ -387,19 +378,25 @@ int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
     if(sync_count != thread_set->thread_nums){
         fprintf(stderr, "Error : %d/%d has been started \r\n",sync_count,thread_set->thread_nums);
         start = 1;
+        timer_start(t);
         wait_threads_end(thread_set);
+        timer_stop(t);
+    }else{
+        //start = 1 代表全部线程开始执行测试任务
+        start = 1;
+        //等待所有线程执行完毕
+        timer_start(t);
+        wait_threads_end(thread_set);
+        timer_stop(t);
     }
-    //start = 1 代表全部线程开始执行测试任务
-    start = 1;
-    //等待所有线程执行完毕
-    timer_start(t);
-    wait_threads_end(thread_set);
-    timer_stop(t);
     calculate_running_time(t);
 clean:
+    //测试结束删除文件
+    for(i = 0 ; i < thread_set->thread_nums ; i++){
+        remove(thread_set->threads[i].file_name);
+    }
     free((int*)child_status);
     free(td);
-    printf("PASS!\r\n");
     return PASS;
 }
 
