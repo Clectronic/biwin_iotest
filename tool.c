@@ -160,11 +160,16 @@ static void print_help_and_exit()
 int parse_args(int argc, char* argv[], Arguments *args){
     int arg ;
     while(1){
-        arg = getopt(argc, argv, "t:f:b:r:hmsRdlcS");
+        arg = getopt(argc, argv, "t:f:b:r:hmsRdlcSj");
         if(arg == -1){
             break;
         }
         switch(arg){
+            case 'j':
+                if(parseJson(args)){
+                    return FAIL;
+                }
+                return PASS;
             case 't':
                 args->thread_nums = atoi(optarg);
                 check_arg(args->thread_nums, "thread_num > 0\n");
@@ -215,7 +220,7 @@ int parse_args(int argc, char* argv[], Arguments *args){
     }
     return PASS;
 }
-void init_test_thread_set(thread_info *thread_set, Arguments * args){
+int init_test_thread_set(thread_info *thread_set, Arguments * args){
     //默认偏移量为0
     off_t offs = 0;
     //初始化测试线程池
@@ -235,7 +240,7 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
         thread_set->threads[i].block_size = args->block_size;
         thread_set->threads[i].ramdom_ops_count = args->random_ops_counts;
         thread_set->threads[i].file_size = args->file_size_MB / thread_set->thread_nums;
-        printf("---blocks = %ld \r\n ",thread_set->threads[i].file_size);
+
         if(args->rawDevice_mode){
             //设置每个线程对同一个原始块设备不同的偏移量
             thread_set->threads[i].file_offset = offs;
@@ -264,14 +269,13 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
 
             thread_set->threads[i].buffer_crc = crc32(buffer, bsize, 0);
         }
-        printf("thread_set->threads[i].buffer_crc = %u \r\n",thread_set->threads[i].buffer_crc);
     }
+    return PASS;
     //printf("off = %dB r_offs = %dMB\r\n",offs, r_offs/1024/1024);
 }
 
 static pthread_mutex_t time_mutex; // 互斥锁
 int start_task(thread_ins *t,
-
                uint64_t io_ops,
                file_offset_function offset_func,
                file_io_function io_func,
@@ -279,35 +283,14 @@ int start_task(thread_ins *t,
                mmap_io_function mmap_func,
                mmap_loc_function loc_func,
                Latencies *latency) {
-    int fd;
+    int fd = t->fd;
     int ret;
 	struct timeval tv_start, tv_stop;
+    struct timespec start, end;
     uint64_t blocks = (uint64_t)(t->file_size * MBYTE) / (t->block_size);
     uint64_t ori_ops = io_ops;
     int open_flags;
     unsigned long bytesize = blocks*(t->block_size);
-    // 读写操作
-    open_flags = O_RDWR;
-
-    // 如果不是原始块设备需要创建文件
-    if (!opt_args.rawDevice_mode) {
-        open_flags |= O_CREAT;
-    }
-
-    // 同步磁盘和内存中的数据
-    if (opt_args.sync_writing) {
-        open_flags |= O_SYNC;
-    }
-
-    // 如果需要直接写入
-    if (opt_args.direct_io) {
-        open_flags |= __O_DIRECT;
-    }
-    fd = open(t->file_name, open_flags, 0600); // 0600代表文件拥有者有读写权限
-    if (fd == -1) {
-        fprintf(stderr, "%s : %s\n", strerror(errno), t->file_name);
-        return -1;
-    }
     //如果不是原始块设备，则需要预设文件大小
     if(!opt_args.rawDevice_mode){
         ret = ftruncate64(fd,bytesize);
@@ -347,15 +330,16 @@ int start_task(thread_ins *t,
 
 				current_loc = (*loc_func)(file_loc, current_loc, t);
 
-				gettimeofday(&tv_start, NULL);
-
+				//gettimeofday(&tv_start, NULL);
+                clock_gettime(CLOCK_MONOTONIC, &start);
 				ret = mmap_func(current_loc, t);
 				if(ret != 0)
 					exit(ret);
 				if( opt_args.sync_writing ) msync(current_loc, t->block_size, MS_SYNC);
-
-				gettimeofday(&tv_stop, NULL);
+                clock_gettime(CLOCK_MONOTONIC, &end);
+				//gettimeofday(&tv_stop, NULL);
 				//update_latency_info(latency, tv_start, tv_stop);
+			    update_actual_time(latency,start,end);
 			}
 
 			//(*blockCount) += orig_iops; // take this out of the for loop, we don't handle errors that well
@@ -366,7 +350,6 @@ int start_task(thread_ins *t,
         // 普通文件读写
         off_t cur_offt = t->file_offset - t->block_size;
         while (io_ops) {
-            struct timespec start, end;
             //gettimeofday(&tv_start, NULL);
             cur_offt = (*offset_func)(cur_offt, t);
             //printf("cur_ooft = %d \r\n",cur_offt);
@@ -406,20 +389,23 @@ int start_task(thread_ins *t,
                mmap_loc_function loc_func) 
 */
 static void start_write_test(thread_ins * thread){
-    debug_log(true,"seq write start !\r\n");
+
+    debug_log(opt_args.show_log ,"seq write start !\r\n");
     //args: thread, get_blocks_func,
     start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pwrite_operate,MADV_SEQUENTIAL,do_mmap_write_operation,get_sequential_loc, &thread->writeLatency);
 }
 static void start_read_test(thread_ins * thread){
-    debug_log(true,"seq read start !\r\n");
+    debug_log(opt_args.show_log ,"seq read start !\r\n");
+    // 禁用输入缓冲
+    //setvbuf(thread->fd, NULL, _IONBF, 0);
     start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pread_operate,MADV_SEQUENTIAL,do_mmap_read_operation,get_sequential_loc, &thread->readLatency);
 }
 static void start_rwrite_test(thread_ins * thread){
-    debug_log(true,"radom write start !\r\n");
+    debug_log(opt_args.show_log ,"radom write start !\r\n");
     start_task(thread, thread->ramdom_ops_count,get_random_offset, do_pwrite_operate,MADV_RANDOM,do_mmap_write_operation,get_random_loc, &thread->randomWriteLatency);
 }
 static void start_rread_test(thread_ins * thread){
-    debug_log(true,"radom read start !\r\n");
+    debug_log(opt_args.show_log ,"radom read start !\r\n");
     start_task(thread, thread->ramdom_ops_count,get_random_offset, do_pread_operate,MADV_RANDOM,do_mmap_read_operation,get_random_loc, &thread->randomReadLatency);
 }
 static func_test test_cases[] = {
@@ -444,11 +430,8 @@ int start_tests(thread_info *thread_set,Arguments args){
         }
         for(int i = 0 ; i < thread_set->thread_nums ; i++){
             total_time += thread_set->threads[i].writeLatency.avg;
-            printf("t%d : %6f\n",i+1,thread_set->threads[i].writeLatency.avg);
         }
-        printf("---------- write_laten_total = %6f -------------\r\n",total_time);
         double rate = args.file_size_MB / total_time;
-        printf("------------write_laten_rate = %.9f MB/S \n",rate);
     }
     if(args.run_test[READ_TEST]){
         ret = start_test(thread_set, READ_TEST, args.sequential_write_mode, timer_read);
@@ -497,6 +480,9 @@ int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
     threads_data * td;
     int sync_count;
     volatile int start = 0;
+    int open_flags;
+    int fd;
+
     child_status = (volatile int*)calloc(thread_set->thread_nums, sizeof(int));
     if(child_status == NULL){
         perror("Error: No enough memory for child_status callocing! \r\n");
@@ -512,6 +498,28 @@ int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
         td[i].child_status = &child_status[i];
         td[i].fnc = test_cases[test_case];
         td[i].t_instant = &thread_set->threads[i];
+        // 读写操作
+        open_flags = O_RDWR;
+
+        // 如果不是原始块设备需要创建文件
+        if (!opt_args.rawDevice_mode) {
+            open_flags |= O_CREAT;
+        }
+
+        // 同步磁盘和内存中的数据
+        if (opt_args.sync_writing) {
+            open_flags |= O_SYNC;
+        }
+
+        // 如果需要直接写入
+        if (opt_args.direct_io) {
+            open_flags |= __O_DIRECT;
+        }
+        td[i].t_instant->fd = open(td[i].t_instant->file_name, open_flags, 0600); // 0600代表文件拥有者有读写权限
+        if (fd == -1) {
+            fprintf(stderr, "%s : %s\n", strerror(errno), td[i].t_instant->file_name);
+            return -1;
+        }
         if(seq){
             td[i].pstart = NULL;
         }else{
@@ -568,3 +576,94 @@ clean:
     return PASS;
 }
 
+int parseJson(Arguments *args){
+    // 读取 JSON 文件
+    FILE *file = fopen("config.json", "r");
+    if (!file) {
+        printf("Failed to open JSON file.\n");
+        return 1;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long fileSize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char *jsonString = (char *)malloc(fileSize + 1);
+    fread(jsonString, 1, fileSize, file);
+    fclose(file);
+
+    // 添加 JSON 字符串的结束标志
+    jsonString[fileSize] = '\0';
+
+    // 解析 JSON 数据
+    cJSON *root = cJSON_Parse(jsonString);
+    free(jsonString);
+
+    if (root == NULL) {
+        printf("Failed to parse JSON.\n");
+        return 1;
+    }
+    cJSON *file_path_item = cJSON_GetObjectItem(root, "file_path");
+    cJSON *thread_nums_item = cJSON_GetObjectItem(root, "thread_nums");
+    cJSON *block_size_item = cJSON_GetObjectItem(root, "block_size");
+    cJSON *file_size_MB_item = cJSON_GetObjectItem(root, "file_size_MB");
+    cJSON *random_ops_counts_item = cJSON_GetObjectItem(root, "random_ops_counts");
+    cJSON *sequential_write_mode_item = cJSON_GetObjectItem(root, "sequential_write_mode");
+    cJSON *mmap_mode_item = cJSON_GetObjectItem(root, "mmap_mode");
+    cJSON *rawDevice_mode_item = cJSON_GetObjectItem(root, "rawDevice_mode");
+    cJSON *show_log_item = cJSON_GetObjectItem(root, "show_log");
+    cJSON *sync_writing_item = cJSON_GetObjectItem(root, "sync_writing");
+    cJSON *run_test_item = cJSON_GetObjectItem(root, "run_test");
+    cJSON *check_data_item = cJSON_GetObjectItem(root, "check_data");
+    cJSON *direct_io_item = cJSON_GetObjectItem(root, "direct_io");
+
+    if (file_path_item && thread_nums_item && block_size_item && file_size_MB_item &&
+        random_ops_counts_item && sequential_write_mode_item && mmap_mode_item &&
+        rawDevice_mode_item && show_log_item && sync_writing_item && run_test_item &&
+        check_data_item && direct_io_item) {
+        args->file_path = strdup(file_path_item->valuestring);
+        args->thread_nums = (uint32_t)thread_nums_item->valueint;
+        args->block_size = (uint32_t)block_size_item->valueint;
+        args->file_size_MB = (uint32_t)file_size_MB_item->valueint;
+        args->random_ops_counts = (uint32_t)random_ops_counts_item->valueint;
+        args->sequential_write_mode = sequential_write_mode_item->valueint;
+        args->mmap_mode = mmap_mode_item->valueint;
+        args->rawDevice_mode = rawDevice_mode_item->valueint;
+        args->show_log = show_log_item->valueint;
+        args->sync_writing = sync_writing_item->valueint;
+
+        if (run_test_item->type == cJSON_Array) {
+            for (int i = 0; i < DEFAULT_TESTCOUNT; i++) {
+                cJSON *test_item = cJSON_GetArrayItem(run_test_item, i);
+                args->run_test[i] = test_item->valueint;
+            }
+        }
+
+        args->check_data = check_data_item->valueint;
+        args->direct_io = direct_io_item->valueint;
+    } else {
+        printf("JSON data is incomplete or in the wrong format.\n");
+        cJSON_Delete(root);
+        return 1;
+    }
+
+    // 打印配置结果
+    printf("Configuration:\n");
+    printf("File Path: %s\n", args->file_path);
+    printf("Thread Count: %u\n", args->thread_nums);
+    printf("Block Size: %u\n", args->block_size);
+    printf("File Size (MB): %u\n", args->file_size_MB);
+    printf("Random Ops Counts: %u\n", args->random_ops_counts);
+    printf("Sequential Write Mode: %d\n", args->sequential_write_mode);
+    printf("Mmap Mode: %d\n", args->mmap_mode);
+    printf("Raw Device Mode: %d\n", args->rawDevice_mode);
+    printf("Show Log: %d\n", args->show_log);
+    printf("Sync Writing: %d\n", args->sync_writing);
+    printf("Run Test: [%d, %d, %d, %d]\n", args->run_test[0], args->run_test[1], args->run_test[2], args->run_test[3]);
+    printf("Check Data: %d\n", args->check_data);
+    printf("Direct I/O: %d\n", args->direct_io);
+    // 释放 cJSON 对象
+    cJSON_Delete(root);
+    // 释放字符串内存
+    free(args->file_path);
+}

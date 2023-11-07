@@ -5,6 +5,7 @@
 #include "thread_info.h"
 #include "generic_io.h"
 #include "time_info.h"
+#include "cJSON.h"
 #include <stdint.h>
 #include <getopt.h>
 #include <sys/types.h>
@@ -52,7 +53,7 @@ static void print_option(const char* s,
 static void print_help_and_exit();
 
 static void* bw_aligned_alloc(const size_t size);
-void init_test_thread_set(thread_info *thread_set, Arguments * args);
+int init_test_thread_set(thread_info *thread_set, Arguments * args);
 
 
 #define WRITE_TEST 0
@@ -70,4 +71,5 @@ typedef struct{
   volatile int *pstart;
 } threads_data;
 extern Arguments opt_args;
+int parseJson(Arguments *args);
 #endif

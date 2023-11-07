@@ -1,0 +1,15 @@
+{
+    "file_path": ".",
+    "thread_nums": 6,
+    "block_size": 4096,
+    "file_size_MB": 256,
+    "random_ops_counts": 4000,
+    "sequential_write_mode": 0,
+    "mmap_mode": 0,
+    "rawDevice_mode": 0,
+    "show_log": 0,
+    "sync_writing": 0,
+    "run_test": [1, 1, 1, 1],
+    "check_data": 0,
+    "direct_io": 0
+}

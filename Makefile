@@ -8,10 +8,10 @@ SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 
 # 目标文件依赖于对应的源文件
-all: iotest
+all: bw_iotest
 
-iotest: $(OBJECTS)
-	$(CC) -o iotest $(OBJECTS) $(CFLAGS)
+bw_iotest: $(OBJECTS)
+	$(CC) -o bw_iotest $(OBJECTS) $(CFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

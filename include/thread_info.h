@@ -15,7 +15,7 @@ typedef struct{
     uint64_t block_size;
     unsigned char *buffer;
     unsigned buffer_crc;
-    
+    int fd;
 	unsigned long    blocksWritten;
 	time_info          writeTimings;
 	Latencies	     writeLatency;
