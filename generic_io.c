@@ -61,3 +61,82 @@ int do_pread_operate(int fd, off_t offset, thread_ins * t)
 
 	return 0;
 }
+
+unsigned int get_random_seed()
+{
+	unsigned int seed;
+	struct timeval r;
+
+	if(gettimeofday( &r, NULL ) == 0) {
+		seed = r.tv_usec;
+	} else {
+		seed = 0xDEADBEEF;
+	}
+
+	return seed;
+}
+
+off_t get_random_number(const off_t max)
+{
+	int seed = get_random_seed();
+	unsigned long rr = rand_r(&seed);
+
+	// if it doesn't give us enough random bits, add some more
+	if(RAND_MAX < max)
+	{
+		rr |= (rand_r(&seed) << 16);
+	}
+
+	return (off_t) (rr % max);
+}
+off_t get_random_offset(off_t current_offset, thread_ins *t)
+{
+	off_t blocks=(t->file_size*MBYTE/t->block_size);
+	off_t offset = get_random_number(blocks) * t->block_size;
+
+	return t->file_offset + offset;
+}
+//mmap
+void *get_sequential_loc(void *base_loc, void *current_loc, thread_ins *t)
+{
+	return current_loc + t->block_size;
+}
+
+void *get_random_loc(void *base_loc, void *current_loc, thread_ins *t)
+{
+	// limit ourselves to a single (the current) mmap chunk for now, just easier
+	off_t max_bytes = MIN(MMAP_CHUNK_SIZE, t->file_size*MBYTE);
+	off_t blocks    = (max_bytes/t->block_size);
+	off_t offset    = get_random_number(blocks) * t->block_size;
+
+	return base_loc + offset;
+}
+
+//
+// define functions to perform the next mmap-based read or write
+//
+int do_mmap_read_operation(void *loc, thread_ins *t)
+{
+	memcpy(t->buffer, loc, t->block_size);
+
+	if( opt_args.check_data )
+	{
+		const unsigned crc = crc32(t->buffer, t->block_size, 0);
+
+		if(crc != t->buffer_crc)
+		{
+			fprintf(stderr, "Thread(%lu) mmap consistency check failed at 0x%p\n", t->thread_num, loc);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int do_mmap_write_operation(void *loc, thread_ins *t)
+{
+	memcpy(loc, t->buffer, t->block_size);
+
+	return 0;
+}
+

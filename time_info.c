@@ -43,19 +43,15 @@ void timer_stop(time_info *t)
 	memcpy( &(t->user_time_stop), &(ru.ru_utime), sizeof( struct timeval ));
 	memcpy( &(t->sys_time_stop), &(ru.ru_stime), sizeof( struct timeval ));
 }
-
-// 函数用于计算程序的实际运行时间
-void calculate_running_time(time_info *info) {
-    // 计算实际运行时间（以秒为单位）
-    double real_time = (info->real_time_stop.tv_sec - info->real_time_start.tv_sec) +
-                      (info->real_time_stop.tv_usec - info->real_time_start.tv_usec) / 1e6;
-    double user_time = (info->user_time_stop.tv_sec - info->user_time_start.tv_sec) +
-                      (info->user_time_stop.tv_usec - info->user_time_start.tv_usec) / 1e6;
-    double sys_time = (info->sys_time_stop.tv_sec - info->sys_time_start.tv_sec) +
-                     (info->sys_time_stop.tv_usec - info->sys_time_start.tv_usec) / 1e6;
-
-    // 打印实际运行时间
-    printf("Real Time: %.6f seconds\n", real_time);
-    printf("User Time: %.6f seconds\n", user_time);
-    printf("System Time: %.6f seconds\n", sys_time);
+void update_actual_time(Latencies *lat, struct timespec start,
+				struct timespec end)
+{
+    // 计算执行时间
+	double elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+	if (elapsed_time > lat->max)
+		lat->max = elapsed_time;
+	lat->avg += elapsed_time;
+	lat->count++;
+	return;
 }
+

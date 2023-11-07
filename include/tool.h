@@ -16,6 +16,7 @@
 #define KBYTE 1024
 #define MBYTE KBYTE*1024
 #define GBYTE MBYTE*1024
+#define MMAP_CHUNK_SIZE 1073741824uLL
 #define DEFAULT_BLOCKSIZE 4096
 #define DEFAULT_THREADNUM 1
 #define DEFAULT_FILESIZE 256
@@ -23,6 +24,8 @@
 #define DEFAULT_DIRFILE "."
 #define DEFAULT_SHOWLOG 0
 #define DEFAULT_TESTCOUNT 4
+
+
 typedef struct {
     char *file_path;
     uint32_t thread_nums;
@@ -50,12 +53,15 @@ static void print_help_and_exit();
 
 static void* bw_aligned_alloc(const size_t size);
 void init_test_thread_set(thread_info *thread_set, Arguments * args);
+
+
 #define WRITE_TEST 0
 #define READ_TEST  1
 #define RANDOM_WRITE_TEST 2
 #define RANDOM_READ_TEST  3
 int start_tests(thread_info *thread_set,Arguments args);
 int start_test(thread_info* threads, int test_case, int seq, time_info *t);
+void calculate_running_time(thread_info *thread_set);
 typedef void(*func_test)(thread_ins *);
 typedef struct{
   volatile int *child_status;

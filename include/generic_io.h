@@ -3,6 +3,7 @@
 #ifndef GENERIC_IO
 #define GENERIC_IO
 #define OFFSET_FORMAT "0X%Lx" 
+#define MIN(a, b)  (((a) < (b)) ? (a) : (b))
 
 unsigned long crc32(const void* const buffer,
 		                  unsigned long     length,
@@ -66,8 +67,15 @@ typedef int                (*mmap_io_function)     (void *loc, thread_ins *t);
 
 typedef off_t          (*file_offset_function) (off_t current_offset, thread_ins *t);
 typedef void *             (*mmap_loc_function)    (void *base_loc, void *current_loc, thread_ins *t);
+
+off_t get_random_offset(off_t current_offset, thread_ins *t);
 off_t get_seq_offt(off_t cur_offt, thread_ins *t);
 int get_seq_blocks(thread_ins* t);
 int do_pwrite_operate(int fd, off_t offset, thread_ins * t);
 int do_pread_operate(int fd, off_t offset, thread_ins * t);
+
+void *get_sequential_loc(void *base_loc, void *current_loc, thread_ins *t);
+void *get_random_loc(void *base_loc, void *current_loc, thread_ins *t);
+int do_mmap_write_operation(void *loc, thread_ins *t);
+int do_mmap_read_operation(void *loc, thread_ins *t);
 #endif

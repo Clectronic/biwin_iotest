@@ -4,7 +4,6 @@
 #include "time_info.h"
 #ifndef THREAD_INFO
 #define THREAD_INFO
-
 typedef struct{
     int thread_num;
     pthread_t thread;

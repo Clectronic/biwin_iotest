@@ -20,5 +20,6 @@ typedef struct{
 void timer_init(time_info *t);
 void timer_start(time_info *t);
 void timer_stop(time_info *t);
-void calculate_running_time(time_info *info);
+//void calculate_running_time(thread_info *thread_set);
+void update_actual_time(Latencies *lat, struct timespec start, struct timespec end);
 #endif

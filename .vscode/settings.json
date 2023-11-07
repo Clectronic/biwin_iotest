@@ -1,7 +1,5 @@
 {
     "files.associations": {
-        "generic_io.h": "c",
-        "time_info.h": "c",
-        "crc32.h": "c"
+        "type_traits": "c"
     }
 }

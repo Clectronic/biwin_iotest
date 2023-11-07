@@ -1,4 +1,68 @@
 #include "include/tool.h"
+#include <sys/mman.h>
+#include <unistd.h>
+extern Arguments opt_args;
+
+// 函数用于计算程序的实际运行时间
+void calculate_running_time(thread_info *thread_set) {
+    // 计算实际运行时间（以秒为单位
+	if(opt_args.run_test[WRITE_TEST]){
+		time_info *info = &thread_set->total_write_time;
+		double real_time = (info->real_time_stop.tv_sec - info->real_time_start.tv_sec) +
+						(info->real_time_stop.tv_usec - info->real_time_start.tv_usec) / 1e6;
+		double user_time = (info->user_time_stop.tv_sec - info->user_time_start.tv_sec) +
+						(info->user_time_stop.tv_usec - info->user_time_start.tv_usec) / 1e6;
+		double sys_time = (info->sys_time_stop.tv_sec - info->sys_time_start.tv_sec) +
+						(info->sys_time_stop.tv_usec - info->sys_time_start.tv_usec) / 1e6;
+		// 打印实际运行时间
+		printf("WRITE_TIME_STATICS\n");
+		printf("Real Time: %.6f seconds\n", real_time);
+		//printf("User_Space Time: %.6f seconds\n", user_time);
+		//printf("System_Space Time: %.6f seconds\n", sys_time);
+	}
+	if(opt_args.run_test[READ_TEST]){
+		time_info *info = &thread_set->total_read_time;
+		double real_time = (info->real_time_stop.tv_sec - info->real_time_start.tv_sec) +
+						(info->real_time_stop.tv_usec - info->real_time_start.tv_usec) / 1e6;
+		double user_time = (info->user_time_stop.tv_sec - info->user_time_start.tv_sec) +
+						(info->user_time_stop.tv_usec - info->user_time_start.tv_usec) / 1e6;
+		double sys_time = (info->sys_time_stop.tv_sec - info->sys_time_start.tv_sec) +
+						(info->sys_time_stop.tv_usec - info->sys_time_start.tv_usec) / 1e6;
+		// 打印实际运行时间
+		printf("READ_TIME_STATICS\n");
+		printf("Real Time: %.6f seconds\n", real_time);
+		//printf("User_Space Time: %.6f seconds\n", user_time);
+		//printf("System_Space Time: %.6f seconds\n", sys_time);
+	}
+	if(opt_args.run_test[RANDOM_WRITE_TEST]){
+		time_info *info = &thread_set->total_random_write_time;
+		double real_time = (info->real_time_stop.tv_sec - info->real_time_start.tv_sec) +
+						(info->real_time_stop.tv_usec - info->real_time_start.tv_usec) / 1e6;
+		double user_time = (info->user_time_stop.tv_sec - info->user_time_start.tv_sec) +
+						(info->user_time_stop.tv_usec - info->user_time_start.tv_usec) / 1e6;
+		double sys_time = (info->sys_time_stop.tv_sec - info->sys_time_start.tv_sec) +
+						(info->sys_time_stop.tv_usec - info->sys_time_start.tv_usec) / 1e6;
+		// 打印实际运行时间
+		printf("RANDOM_WRITE_TIME_STATICS\n");
+		printf("Real Time: %.6f seconds\n", real_time);
+		//printf("User_Space Time: %.6f seconds\n", user_time);
+		//printf("System_Space Time: %.6f seconds\n", sys_time);
+	}
+	if(opt_args.run_test[RANDOM_READ_TEST]){
+		time_info *info = &thread_set->total_random_read_time;
+		double real_time = (info->real_time_stop.tv_sec - info->real_time_start.tv_sec) +
+						(info->real_time_stop.tv_usec - info->real_time_start.tv_usec) / 1e6;
+		double user_time = (info->user_time_stop.tv_sec - info->user_time_start.tv_sec) +
+						(info->user_time_stop.tv_usec - info->user_time_start.tv_usec) / 1e6;
+		double sys_time = (info->sys_time_stop.tv_sec - info->sys_time_start.tv_sec) +
+						(info->sys_time_stop.tv_usec - info->sys_time_start.tv_usec) / 1e6;
+		// 打印实际运行时间
+		printf("RANDOM_READ_TIME_STATICS\n");
+		printf("Real Time: %.6f seconds\n", real_time);
+		//printf("User_Space Time: %.6f seconds\n", user_time);
+		//printf("System_Space Time: %.6f seconds\n", sys_time);
+	}
+}
 
 static void* bw_aligned_alloc(const size_t size) {
     void *memory = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -205,16 +269,23 @@ void init_test_thread_set(thread_info *thread_set, Arguments * args){
     //printf("off = %dB r_offs = %dMB\r\n",offs, r_offs/1024/1024);
 }
 
+static pthread_mutex_t time_mutex; // 互斥锁
 int start_task(thread_ins *t,
+
                uint64_t io_ops,
                file_offset_function offset_func,
-               file_io_function io_func) {
+               file_io_function io_func,
+               int madvice,
+               mmap_io_function mmap_func,
+               mmap_loc_function loc_func,
+               Latencies *latency) {
     int fd;
     int ret;
+	struct timeval tv_start, tv_stop;
     uint64_t blocks = (uint64_t)(t->file_size * MBYTE) / (t->block_size);
     uint64_t ori_ops = io_ops;
     int open_flags;
-
+    unsigned long bytesize = blocks*(t->block_size);
     // 读写操作
     open_flags = O_RDWR;
 
@@ -237,20 +308,79 @@ int start_task(thread_ins *t,
         fprintf(stderr, "%s : %s\n", strerror(errno), t->file_name);
         return -1;
     }
+    //如果不是原始块设备，则需要预设文件大小
+    if(!opt_args.rawDevice_mode){
+        ret = ftruncate64(fd,bytesize);
+        if(ret != 0){
+            perror("truncate file error \r\n");
+            close(fd);
+            exit(-1);
+        }
+    }
     if (opt_args.mmap_mode) {
         // 使用内存映射读写
-    } else {
+ 		unsigned long chunk_num;
+		// rounds the number of mmap chunks up, basically ceiling function
+		off_t num_mmap_chunks = bytesize/MMAP_CHUNK_SIZE + 1;
+		for(chunk_num=0; chunk_num < num_mmap_chunks; chunk_num++)
+		{
+			void *file_loc = NULL;
+			long this_chunk_offset = t->file_offset + chunk_num*MMAP_CHUNK_SIZE;
+			long this_chunk_size = MIN(MMAP_CHUNK_SIZE, (off_t)bytesize - chunk_num*MMAP_CHUNK_SIZE);
+			long this_chunk_blocks = this_chunk_size / t->block_size;
+			void *current_loc = NULL;
+
+			file_loc=mmap(NULL,this_chunk_size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,
+					  this_chunk_offset);
+			if(file_loc == MAP_FAILED) {
+				fprintf(stderr, "this_chunk_size=%ld, fd=%d, offset=" OFFSET_FORMAT
+					"\n", this_chunk_size, fd, t->file_offset);
+				perror("Error mapping data file");
+				close(fd);
+				return 0;
+			}
+
+			madvise(file_loc, this_chunk_size, madvice);
+			current_loc = file_loc - t->block_size; // back-one hack for sequential case
+			while(io_ops--) {
+				int ret;
+
+				current_loc = (*loc_func)(file_loc, current_loc, t);
+
+				gettimeofday(&tv_start, NULL);
+
+				ret = mmap_func(current_loc, t);
+				if(ret != 0)
+					exit(ret);
+				if( opt_args.sync_writing ) msync(current_loc, t->block_size, MS_SYNC);
+
+				gettimeofday(&tv_stop, NULL);
+				//update_latency_info(latency, tv_start, tv_stop);
+			}
+
+			//(*blockCount) += orig_iops; // take this out of the for loop, we don't handle errors that well
+
+			munmap(file_loc, this_chunk_size);
+		}
+	} else {
         // 普通文件读写
         off_t cur_offt = t->file_offset - t->block_size;
-        printf("io_ops = %ld\r\n",io_ops);
         while (io_ops) {
-            struct timeval time_start, time_stop;
-            gettimeofday(&time_start, NULL);
+            struct timespec start, end;
+            //gettimeofday(&tv_start, NULL);
             cur_offt = (*offset_func)(cur_offt, t);
             //printf("cur_ooft = %d \r\n",cur_offt);
+            // 记录时间的操作，加锁
+            //pthread_mutex_lock(&time_mutex);
+            // 获取开始时间
+            clock_gettime(CLOCK_MONOTONIC, &start);
             ret = (*io_func)(fd, cur_offt, t);
-            gettimeofday(&time_stop, NULL);
-
+            // 获取结束时间
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            // 解锁
+            //pthread_mutex_unlock(&time_mutex);
+            //gettimeofday(&tv_stop, NULL);
+			update_actual_time(latency,start,end);
             if (ret == -1) {
                 perror("Error: during IO \r\n");
                 exit(-1);
@@ -263,22 +393,34 @@ int start_task(thread_ins *t,
 clean:
     fsync(fd);
     close(fd);
-    printf("blocks = %ld \r\n", blocks);
     return 0;
 }
 
+/*
+int start_task(thread_ins *t,
+               uint64_t io_ops,
+               file_offset_function offset_func,
+               file_io_function io_func,
+               int madvice,
+               mmap_io_function mmap_func,
+               mmap_loc_function loc_func) 
+*/
 static void start_write_test(thread_ins * thread){
     debug_log(true,"seq write start !\r\n");
     //args: thread, get_blocks_func,
-    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pwrite_operate);
-    printf("开始读\r\n");
-    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pread_operate);
+    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pwrite_operate,MADV_SEQUENTIAL,do_mmap_write_operation,get_sequential_loc, &thread->writeLatency);
 }
 static void start_read_test(thread_ins * thread){
+    debug_log(true,"seq read start !\r\n");
+    start_task(thread, get_seq_blocks(thread),get_seq_offt, do_pread_operate,MADV_SEQUENTIAL,do_mmap_read_operation,get_sequential_loc, &thread->readLatency);
 }
 static void start_rwrite_test(thread_ins * thread){
+    debug_log(true,"radom write start !\r\n");
+    start_task(thread, thread->ramdom_ops_count,get_random_offset, do_pwrite_operate,MADV_RANDOM,do_mmap_write_operation,get_random_loc, &thread->randomWriteLatency);
 }
 static void start_rread_test(thread_ins * thread){
+    debug_log(true,"radom read start !\r\n");
+    start_task(thread, thread->ramdom_ops_count,get_random_offset, do_pread_operate,MADV_RANDOM,do_mmap_read_operation,get_random_loc, &thread->randomReadLatency);
 }
 static func_test test_cases[] = {
 	start_write_test,
@@ -289,6 +431,8 @@ static func_test test_cases[] = {
 
 int start_tests(thread_info *thread_set,Arguments args){
     int ret;
+    int i;
+    double total_time = 0 ;
     time_info *timer_write = &(thread_set->total_write_time);
     time_info *timer_read = &(thread_set->total_read_time);
     time_info *timer_ramdom_write = &(thread_set->total_random_write_time);
@@ -298,6 +442,36 @@ int start_tests(thread_info *thread_set,Arguments args){
         if(ret){
             exit(-1);
         }
+        for(int i = 0 ; i < thread_set->thread_nums ; i++){
+            total_time += thread_set->threads[i].writeLatency.avg;
+            printf("t%d : %6f\n",i+1,thread_set->threads[i].writeLatency.avg);
+        }
+        printf("---------- write_laten_total = %6f -------------\r\n",total_time);
+        double rate = args.file_size_MB / total_time;
+        printf("------------write_laten_rate = %.9f MB/S \n",rate);
+    }
+    if(args.run_test[READ_TEST]){
+        ret = start_test(thread_set, READ_TEST, args.sequential_write_mode, timer_read);
+        if(ret){
+            exit(-1);
+        }
+    }
+    if(args.run_test[RANDOM_WRITE_TEST]){
+        ret = start_test(thread_set, RANDOM_WRITE_TEST, args.sequential_write_mode, timer_ramdom_write);
+        if(ret){
+            exit(-1);
+        }
+    }
+    if(args.run_test[RANDOM_READ_TEST]){
+        ret = start_test(thread_set, RANDOM_READ_TEST, args.sequential_write_mode, timer_random_read);
+        if(ret){
+            exit(-1);
+        }
+    }
+    calculate_running_time(thread_set);
+    //测试结束删除文件
+    for(i = 0 ; i < thread_set->thread_nums ; i++){
+        remove(thread_set->threads[i].file_name);
     }
     return PASS;
 }
@@ -365,11 +539,9 @@ int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
         for(i = 0 ; i < thread_set->thread_nums ; i++){
             if(child_status[i]){
                 sync_count++;
-                printf("sync = %d\r\n",sync_count);
             }
         }
         if(sync_count == thread_set->thread_nums){
-            printf("准备完成\r\n");
             break;
         }
         sleep(1);
@@ -389,12 +561,8 @@ int start_test(thread_info* thread_set, int test_case, int seq, time_info* t){
         wait_threads_end(thread_set);
         timer_stop(t);
     }
-    calculate_running_time(t);
+    //calculate_running_time(t);
 clean:
-    //测试结束删除文件
-    for(i = 0 ; i < thread_set->thread_nums ; i++){
-        remove(thread_set->threads[i].file_name);
-    }
     free((int*)child_status);
     free(td);
     return PASS;
