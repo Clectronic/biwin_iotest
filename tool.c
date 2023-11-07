@@ -127,7 +127,8 @@ static void print_help_and_exit()
 {
 
 	printf("Usage: ./iotest [options]\n");
-
+	print_option("-j", "Use json to config args" ,
+				 "config/config.json");    
 	print_option("-f", "Filesize per thread in MBytes",
 				 my_int_to_string(DEFAULT_FILESIZE));
 
@@ -150,7 +151,6 @@ static void print_help_and_exit()
 	print_option("-W", "Do writing phase sequentially", 0);
 	
 	print_option("-S", "Do writing synchronously", 0);
-
 
 	print_option("-h", "Print this help and exit", 0);
 
@@ -578,7 +578,7 @@ clean:
 
 int parseJson(Arguments *args){
     // 读取 JSON 文件
-    FILE *file = fopen("config.json", "r");
+    FILE *file = fopen("config/config.json", "r");
     if (!file) {
         printf("Failed to open JSON file.\n");
         return 1;

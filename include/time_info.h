@@ -4,7 +4,7 @@
 #include <sys/resource.h>
 typedef struct {
 	double avg, max;
-	unsigned long count, count1, count2;
+	unsigned long count;
 } Latencies;
 
 typedef struct{

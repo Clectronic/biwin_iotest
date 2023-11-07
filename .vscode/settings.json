@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "type_traits": "c",
-        "tool.h": "c"
+        "tool.h": "c",
+        "result.h": "c",
+        "unistd.h": "c"
     }
 }
